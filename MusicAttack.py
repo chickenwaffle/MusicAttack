@@ -1,14 +1,13 @@
 #! /usr/bin/env python
 ######################################################################
-# tuner.py - a minimal command-line guitar/ukulele tuner in Python.
-# Requires numpy and pyaudio.
+# MusicAttack.py - Use your musical instrument or voice to control panel attack
+# Requires numpy, pyaudio, and keyboard.
 ######################################################################
-# Author:  Matt Zucker
-# Date:    July 2016
-# License: Creative Commons Attribution-ShareAlike 3.0
-#          https://creativecommons.org/licenses/by-sa/3.0/us/
+# Author:  kornflakes, Sankyr
+# Date:    August 2022
+# License: MIT License 2022
+#          https://mit-license.org/
 ######################################################################
-
 import numpy as np
 import pyaudio
 import keyboard
@@ -66,7 +65,7 @@ def get_dominant_pitch(samples):
 # Calculate note returns position on an 88-key piano.
 # An A440 will return the value 49.
 # Result can be passed as an arg thru function note_name() to get note name, i.e. A4
-def calculate_note():
+def calculate_note(stream, buf):
     # Shift the buffer down and new data in
     buf[:-FRAME_SIZE] = buf[FRAME_SIZE:]
     buf[-FRAME_SIZE:] = np.frombuffer(stream.read(FRAME_SIZE), np.int16)
@@ -128,17 +127,100 @@ def mode(ls):
     keys = [key for key in counts.keys() if counts[key] == max(counts.values())] 
     return(keys[0])
 
+def get_microphone_list():
+    retval={}
+    adict=None
+    for devindex in range(pyaudio.PyAudio().get_device_count()):
+      adict=pyaudio.PyAudio().get_device_info_by_index(devindex)
+      if(bool(int(adict["maxInputChannels"]))):
+        retval[adict["name"]]=adict["index"]
+    return(retval)     
+
+
+# Interactively prompt the user to select a microphone from a list
+def set_microphone():
+    inputs = get_microphone_list()
+    print("#\tInput\n========================================")
+    for key, value in inputs.items():
+        print(str(value) + "\t" + key)
+
+    mic_index = input("Select a microphone #: ")
+
+    return mic_index
+
+
+# Contains code to interactively create config.json
+def __create_config(configfile, panelattack_keys):
+    new_config = {}
+    new_config["mic_index"] = int(set_microphone())
+
+    # Create an index keys inside config dictionary
+    new_config["keys"] = {}
+
+    key_list = list(panelattack_keys.values())
+
+    # Used to iterate thru key_list
+    # Since Python doesn't like to convert dict values into lists and vice versa
+    pos = 0
+
+    buf = np.zeros(SAMPLES_PER_FFT, dtype=np.float32)
+    stream = pyaudio.PyAudio().open(format=pyaudio.paInt16,
+                                    channels=1,
+                                    input_device_index=new_config["mic_index"],
+                                    rate=FSAMP,
+                                    input=True,
+                                    frames_per_buffer=FRAME_SIZE)
+
+    stream.start_stream()
+
+    # For each button, record 15 samples to find most
+    # commonly occuring note.  Returns all keys as dict when done.
+    print("Play a note for two seconds to bind it to the key:")
+    for pa_key in panelattack_keys:
+        recorded_notes = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+        i = 0
+
+        while (i < len(recorded_notes)):
+            print("\r" + str(pa_key) + "                              ", end='')
+            recorded_notes[i] = calculate_note(stream, buf)
+
+            if recorded_notes[i] == 0:
+                i = 0
+            else:
+                print("\r" + str(pa_key) + "\tBinding...\t[" + str(i+1) + "/" + str(len(recorded_notes)) + "]", end='')
+                i += 1
+
+            time.sleep(0.1)
+
+        note_mode = mode(recorded_notes)
+        note = note_name(note_mode)
+        new_config["keys"][note] = key_list[pos]
+
+        print("\r" + str(pa_key) + "\tBound freq " + note + " to button \'" + key_list[pos] + "\'")
+
+        pos += 1
+
+    stream.stop_stream()
+
+    
+    option = input("Save keybindings? (Y/n) ")
+    if option.lower() == "y" or option.lower() == "yes" or option == "":
+        with open(configfile,"a") as f:
+            json.dump(new_config, f)
+
+    return new_config
+
 # Attempt to load config.json. If fails, 
 def load_config(panelattack_keys):
-    note_key_dict = {}
+    config = {}
     key_list = list(panelattack_keys.values())
     configfile = "config.json"
 
     try:
         with open(configfile) as f:
-            note_key_dict = json.load(f)
+            config = json.load(f)
 
-        return note_key_dict
+        return config
 
     except json.JSONDecodeError:
         print("Error: Invalid config.json file. Exiting.")
@@ -155,43 +237,8 @@ def load_config(panelattack_keys):
             exit()
 
         if option.lower() == "y" or option.lower() == "yes" or option == "":
-            # Used to iterate thru key_list
-            # Since Python doesn't like to convert dict values into lists and vice versa
-            pos = 0
+            return __create_config(configfile, panelattack_keys)
 
-            # For each button, record 15 samples to find most
-            # commonly occuring note.  Returns all keys as dict when done.
-            for pa_key in panelattack_keys:
-                recorded_notes = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
-                i = 0
-
-                while (i < len(recorded_notes)):
-                    print("\r" + str(pa_key) + "                   ", end='')
-                    recorded_notes[i] = calculate_note()
-
-                    if recorded_notes[i] == 0:
-                        i = 0
-                    else:
-                        print("\r" + str(pa_key) + "\tBinding...", end='')
-                        i += 1
-
-                    time.sleep(0.1)
-
-                note_mode = mode(recorded_notes)
-                note = note_name(note_mode)
-                note_key_dict[note] = key_list[pos]
-
-                print("\r" + str(pa_key) + "\tBound freq " + note + " to button \'" + key_list[pos] + "\'")
-
-                pos += 1
-
-            
-            option = input("Save keybindings? (Y/n) ")
-            if option.lower() == "y" or option.lower() == "yes" or option == "":
-                with open(configfile,"a") as f:
-                    json.dump(note_key_dict, f)
-
-            return note_key_dict
 
         else:
             print("Exiting.")
@@ -199,14 +246,25 @@ def load_config(panelattack_keys):
 
 # Called in main() as the loop that translates notes to key inputs to Panel Attack
 # Argument note_name_to_key takes dictionary.
-def panel(stream, note_name_to_key):
+def panel(config):
+
+    buf = np.zeros(SAMPLES_PER_FFT, dtype=np.float32)
+    stream = pyaudio.PyAudio().open(format=pyaudio.paInt16,
+                                    channels=1,
+                                    input_device_index=config["mic_index"],
+                                    rate=FSAMP,
+                                    input=True,
+                                    frames_per_buffer=FRAME_SIZE)
+
+    stream.start_stream()
+
     is_pressed = False
 
     while stream.is_active():
-        freq = calculate_note()
+        freq = calculate_note(stream, buf)
 
         try:
-            kbpress = note_name_to_key[ note_name(freq) ]
+            kbpress = config["keys"][ note_name(freq) ]
             if not is_pressed:
                 keyboard.send(kbpress)
                 print(str(kbpress))
@@ -225,24 +283,8 @@ def panel(stream, note_name_to_key):
 # Ok, ready to go now.
 
 if __name__ == "__main__":
-
-    # Allocate space to run an FFT.
-    buf = np.zeros(SAMPLES_PER_FFT, dtype=np.float32)
-    num_frames = 0
-
-    # Initialize audio
-    stream = pyaudio.PyAudio().open(format=pyaudio.paInt16,
-                                    channels=1,
-                                    rate=FSAMP,
-                                    input=True,
-                                    frames_per_buffer=FRAME_SIZE)
-
-    stream.start_stream()
-
-    prev_note = None
-    note_name_to_key = None
-
     panelattack_keys = get_panelattack_keys()
-    note_name_to_key = load_config(panelattack_keys)
 
-    panel(stream, note_name_to_key)
+    config = load_config(panelattack_keys)
+
+    panel(config)
