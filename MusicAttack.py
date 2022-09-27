@@ -74,6 +74,7 @@ def calculate_note(stream, buf):
     dominant_frequency, amplitude = get_dominant_pitch(buf)# * window)
 
     # Return 0 if sound isn't loud enough.
+    #TODO: Move this to somewhere else so that testing can be done properly.
     if amplitude < 300:
         return 0
 
@@ -84,7 +85,7 @@ def calculate_note(stream, buf):
     return n0
 
 ######################################################################
-# Functions relating to panel attack and key assignment
+# Functions relating to Panel Attack and config loading/creation
 
 # Grab keysV2.txt as JSON and import them
 # Pulls keybindings on first configuration
@@ -93,6 +94,7 @@ def get_panelattack_keys():
     btn_assignments={}
 
   # Load keys from file
+    #TODO: Cross-platform the following lines
     APPDATA = os.getenv("APPDATA")
     keys_file = "\Panel Attack\keysV2.txt" 
     KEYS_PATH = APPDATA + keys_file
@@ -282,9 +284,12 @@ def panel(config):
 
 # Ok, ready to go now.
 
-if __name__ == "__main__":
-    panelattack_keys = get_panelattack_keys()
 
+def main():
+    panelattack_keys = get_panelattack_keys()
     config = load_config(panelattack_keys)
 
     panel(config)
+
+if __name__ == "__main__":
+    main()
