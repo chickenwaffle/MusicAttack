@@ -28,6 +28,7 @@ class IPU:
     DEFAULT_FRAME_SIZE = 800
     DEFAULT_FRAMES_PER_FFT = 1
     DEFAULT_MIC_INDEX = 0
+    DEFAULT_SENSITIVITY = 300
     NOTE_NAMES = 'C C# D D# E F F# G G# A A# B'.split()
     MONO = 1
 
@@ -35,6 +36,7 @@ class IPU:
     frame_size = 0
     frames_per_fft = 0
     mic_index = 0
+    sensitivity = 0
     samples_per_fft = 0
     amplitude = 0.0
     buf = None
@@ -50,6 +52,7 @@ class IPU:
         self.frames_per_fft = self.DEFAULT_FRAMES_PER_FFT
         self.samples_per_fft = self.frame_size * self.frames_per_fft
         self.mic_index = self.DEFAULT_MIC_INDEX
+        self.sensitivity = self.DEFAULT_SENSITIVITY
 
         self.fourier_array = (-2 * np.pi / self.fsamp) * np.arange(self.samples_per_fft)
         self.piano_frequencies = [self.number_to_freq(i) for i in np.arange(1, 89)]
@@ -66,6 +69,9 @@ class IPU:
     
     def get_amplitude(self):
         return(self.amplitude)
+
+    def get_sensitivity(self):
+        return(self.sensitivity)
     
     def get_sampling_rate(self):
         return(self.sampling_rate)  
@@ -77,7 +83,7 @@ class IPU:
         return(self.note_name)
 
     def get_mic_index(self):
-        return self.mic_index
+        return(self.mic_index)
     
     def set_sample_size(self, size):
         self.sample_size=size
@@ -206,7 +212,7 @@ class IPU:
 
             # Return 0 if sound isn't loud enough.
             #TODO: Move this to somewhere else so that testing can be done properly.
-            if self.amplitude < 300:
+            if self.amplitude < self.sensitivity:
                 self.note_name = 0
                 return
             else:
@@ -223,7 +229,7 @@ class IPU:
         while(self.stream.is_active()):
             try:
                 self.calculate_note()
-                print("\rMIDI:\t{}\t\tNote:\t{} \t\tAmpl:\t{}".format(self.note, self.note_name, self.amplitude), end="")
+                print("\rMIDI:\t{}\t\tNote:\t{}  \t\tAmpl:\t{}".format(self.note, self.note_name, self.amplitude), end="")
             except KeyboardInterrupt:
                 exit()
 ######################################################################
