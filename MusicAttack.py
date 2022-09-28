@@ -35,7 +35,7 @@ class IPU:
     fsamp = 0
     frame_size = 0
     frames_per_fft = 0
-    mic_index = 0
+    mic_index = -1
     sensitivity = 0
     samples_per_fft = 0
     amplitude = 0.0
@@ -173,7 +173,7 @@ class IPU:
 
     def get_microphone_name(self):
         # Cancel if microphone is not set
-        if self.mic_index == 0:
+        if self.mic_index == -1:
             return("NULL")
 
         retval={}
@@ -183,7 +183,7 @@ class IPU:
             if value == self.mic_index:
                 return(key)
 
-    def set_microphone(self, index):
+    def set_microphone_index(self, index):
         self.mic_index=index
         if(self.stream):
             self.stop()
@@ -192,11 +192,11 @@ class IPU:
     # interactively prompt the user to select a microphone from a list
     def set_microphone(self):
         inputs = self.get_microphone_list()
-        print("#\tInput\n========================================")
+        print("\n#\tInput\n========================================")
         for key, value in inputs.items():
             print(str(value) + "\t" + key)
 
-        self.mic_index = input("Select a microphone #: ")
+        self.mic_index = int(input("Select a microphone #: "))
 
     # Calculate note returns position on an 88-key piano.
     # An A440 will return the value 49.
@@ -218,9 +218,8 @@ class IPU:
             else:
                 # Get note number and nearest note
                 n = self.freq_to_number(self.dominant_frequency)
-                n0 = int(round(n))
-                self.note = n0
-                self.note_name = self.note_to_note_name(n0)
+                self.note = int(round(n))
+                self.note_name = self.note_to_note_name(self.note)
 
 
 
@@ -229,9 +228,10 @@ class IPU:
         while(self.stream.is_active()):
             try:
                 self.calculate_note()
-                print("\rMIDI:\t{}\t\tNote:\t{}  \t\tAmpl:\t{}".format(self.note, self.note_name, self.amplitude), end="")
+                print("\rMIDI:\t{}\t\tNote:\t{}  \t\tAmpl:\t{}    ".format(self.note, self.note_name, self.amplitude), end="")
             except KeyboardInterrupt:
-                exit()
+                break
+        self.stop()
 ######################################################################
 # Functions relating to Panel Attack and config loading/creation
 
@@ -278,7 +278,7 @@ def mode(ls):
     return(keys[0])
 
 # Contains code to interactively create config.json
-def __create_config(ipu, configfile, panelattack_keys):
+def create_config(configfile, ipu, panelattack_keys):
     new_config = {}
 
     ipu.set_microphone()
@@ -311,8 +311,8 @@ def __create_config(ipu, configfile, panelattack_keys):
             else:
                 print("\r" + str(pa_key) + "\tBinding...\t[" + str(i+1) + "/" + str(len(recorded_notes)) + "]", end='')
                 i += 1
+                time.sleep(0.1)
 
-            time.sleep(0.1)
 
         note_mode = mode(recorded_notes)
         new_config["keys"][note_mode] = key_list[pos]
@@ -323,16 +323,17 @@ def __create_config(ipu, configfile, panelattack_keys):
     
     option = input("Save keybindings? (Y/n) ")
     if option.lower() == "y" or option.lower() == "yes" or option == "":
-        with open(configfile,"a") as f:
+        with open(configfile,"w") as f:
             json.dump(new_config, f)
 
     ipu.stop()
     return new_config
 
-# Attempt to load config.json. If fails, 
+# Attempt to load config.json. Returns as JSON.
+# If config.json is not present in running directory,
+# the program will call create_config() to make one.
 def load_config(panelattack_keys):
     config = {}
-    key_list = list(panelattack_keys.values())
     configfile = "config.json"
 
     try:
@@ -342,10 +343,9 @@ def load_config(panelattack_keys):
         return config
 
     except json.JSONDecodeError:
-        print("Error: Invalid config.json file. Exiting.")
+        print("Error: Invalid config.json file. Please delete config.json and run the program again.\nExiting.")
         exit()
 
-    # TODO: Key binding should be done in a function separate from this
     except FileNotFoundError:
         print("No config file detected. Create one now? (Y/n) ", end='')
         option = ''
@@ -356,38 +356,93 @@ def load_config(panelattack_keys):
             exit()
 
         if option.lower() == "y" or option.lower() == "yes" or option == "":
-            return __create_config(ipu, configfile, panelattack_keys)
+            return create_config(configfile, ipu, panelattack_keys)
 
 
         else:
             print("Exiting.")
             exit()
 
+# Returns a string that can be outputted in console
+def print_readable_panelattack_config(panelattack_keys, config):
+    pa_keys = list(panelattack_keys.keys())
+    notes = list(config["keys"].keys())
+
+    for i in range(0, len(pa_keys)):
+        print("\'{}\' is bound to key \'{}\' (note {})".format(pa_keys[i], config["keys"][notes[i]], notes[i]))
+
 # Called in main() as the loop that translates notes to key inputs to Panel Attack
 # Argument note_name_to_key takes dictionary.
 def panel(ipu, config):
+    print("Sound is now being translated to keys. Press Ctrl + C to stop.")
     ipu.start()
 
     is_pressed = False
 
-    while ipu.get_stream().is_active():
-        freq = ipu.calculate_note()
+    try:
+        while ipu.get_stream().is_active():
+            ipu.calculate_note()
 
-        try:
-            kbpress = config["keys"][ ipu.get_note_name() ]
-            if not is_pressed:
-                keyboard.send(kbpress)
-                print(str(kbpress))
+            try:
+                kbpress = config["keys"][ ipu.get_note_name() ]
+                if not is_pressed:
+                    keyboard.send(kbpress)
+                    #print(str(kbpress))
 
-            is_pressed = True
+                is_pressed = True
 
-        except KeyError:
-            is_pressed = False
+            except KeyError:
+                is_pressed = False
+
+    except KeyboardInterrupt:
+        pass
+    
+    ipu.stop()
 
 
 ######################################################################
 # Functions relating to menu and interface
 
+banner = '''RECORDER ATTACK
+
+          ___0~
+            \ \/
+              |
+             / \\
+             \  \\
+             ~  ~
+'''
+def main_menu(ipu, config):
+        while True:
+            print("\n")
+            print("1. Run")
+            print("2. Reconfigure Input")
+            print("3. Test microphone")
+            print("0. Exit")
+
+            choice = ""
+            try:
+                choice = int(input("Select and option: "))
+            except:
+                print("Error: Invalid input. Please enter a number.")
+
+
+            if (choice == 1):
+                panel(ipu, config)
+            elif (choice == 2):
+                configfile = "config.json"
+                panelattack_keys = get_panelattack_keys()
+                print("Your Microphone is set to {}".format(ipu.get_microphone_name()))
+                print_readable_panelattack_config(panelattack_keys, config)
+                
+                verify = input("Are you sure you want to overwrite your settings? (y/N) ")
+                if (verify.lower() == "yes" or verify.lower() == "y"):
+                    create_config(configfile, ipu, panelattack_keys)
+            elif (choice == 3):
+                ipu.test()
+            elif (choice == 0):
+                print("Exiting.")
+                exit()
 ######################################################################
 
 # Ok, ready to go now.
@@ -399,10 +454,17 @@ def main(ipu):
     panelattack_keys = get_panelattack_keys()
     config = load_config(panelattack_keys)
 
-    panel(ipu, config)
+    # tell ipu which microphone to use after loading config
+    # because problems happen if not
+    ipu.set_microphone_index(config["mic_index"])
+    
+    # Menu loops
+    main_menu(ipu, config)
 
 if __name__ == "__main__":
+    print(banner)
     ipu = IPU()
 
-    test(ipu)
-    #main(ipu)
+    # Uncomment test(ipu) to check microphone and see how the program calculates values
+    #test(ipu)
+    main(ipu)
