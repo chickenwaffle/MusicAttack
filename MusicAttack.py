@@ -28,7 +28,7 @@ class IPU:
     DEFAULT_FRAME_SIZE = 800
     DEFAULT_FRAMES_PER_FFT = 1
     DEFAULT_MIC_INDEX = 0
-    DEFAULT_SENSITIVITY = 300
+    DEFAULT_SENSITIVITY = 200
     NOTE_NAMES = 'C C# D D# E F F# G G# A A# B'.split()
     MONO = 1
 
@@ -196,7 +196,7 @@ class IPU:
         for key, value in inputs.items():
             print(str(value) + "\t" + key)
 
-        self.mic_index = int(input("Select a microphone #: "))
+        self.mic_index = int(input("Select a microphone # : "))
 
     # Calculate note returns position on an 88-key piano.
     # An A440 will return the value 49.
@@ -225,6 +225,7 @@ class IPU:
 
     def test(self):
         self.start()
+        print("Press Ctrl + C to stop.")
         while(self.stream.is_active()):
             try:
                 self.calculate_note()
@@ -292,6 +293,7 @@ def create_config(configfile, ipu, panelattack_keys):
     key_list = list(panelattack_keys.values())
     pos = 0
 
+    # Start IPU so the program can acceupt microphone input
     ipu.start()
 
     # For each button, record 15 samples to find most
@@ -372,7 +374,6 @@ def print_readable_panelattack_config(panelattack_keys, config):
         print("\'{}\' is bound to key \'{}\' (note {})".format(pa_keys[i], config["keys"][notes[i]], notes[i]))
 
 # Called in main() as the loop that translates notes to key inputs to Panel Attack
-# Argument note_name_to_key takes dictionary.
 def panel(ipu, config):
     print("Sound is now being translated to keys. Press Ctrl + C to stop.")
     ipu.start()
@@ -395,17 +396,16 @@ def panel(ipu, config):
                 is_pressed = False
 
     except KeyboardInterrupt:
-        pass
+        ipu.stop()
     
-    ipu.stop()
 
 
 ######################################################################
 # Functions relating to menu and interface
 
-banner = '''RECORDER ATTACK
+banner = '''MUSIC ATTACK
 
-          ___0~
+           ___0~
             \ \/
               |
              / \\
@@ -422,7 +422,7 @@ def main_menu(ipu, config):
 
             choice = ""
             try:
-                choice = int(input("Select and option: "))
+                choice = int(input("Select an option: "))
             except:
                 print("Error: Invalid input. Please enter a number.")
 
