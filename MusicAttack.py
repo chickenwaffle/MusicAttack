@@ -111,7 +111,7 @@ class IPU:
                                                input=True,
                                                frames_per_buffer=self.frame_size)
         except OSError:
-            print("Error: Microphone did not properly initialize.\nPlease check if you are using correct microphone index and try again.\n")
+            print("Error: The selected input had trouble initializing.\nPlease check if you have selected the correct input and try again.\n")
             exit()
 
     def stop(self):
@@ -190,13 +190,20 @@ class IPU:
 
     # If no argument is given to set_microphone, then
     # interactively prompt the user to select a microphone from a list
+    #
+    # If the user submits nothing or a non-number, set the
+    # microphone to the first microphone in the index list
     def set_microphone(self):
         inputs = self.get_microphone_list()
-        print("\n#\tInput\n========================================")
+        print("\n\n#\tInput\n========================================")
         for key, value in inputs.items():
             print(str(value) + "\t" + key)
+        print("========================================")
 
-        self.mic_index = int(input("Select a microphone # : "))
+        try:
+            self.mic_index = int(input("Select a microphone # (0) "))
+        except (ValueError, KeyboardInterrupt):
+            self.mic_index = 0
 
     # Calculate note returns position on an 88-key piano.
     # An A440 will return the value 49.
@@ -221,18 +228,30 @@ class IPU:
                 self.note = int(round(n))
                 self.note_name = self.note_to_note_name(self.note)
 
+    # Return a bar representation of amplitude, used in test()
+    def amplitude_bar(self):
+        max_amplitude = 2000  # Define the maximum value to scale the number
+        scaled_value = int(self.amplitude / max_amplitude * 10)  # Scale the number to fit within 10 characters
+        bar = '#' * min(10, scaled_value) + '-' * (10 - scaled_value)  # Construct the bar string
 
+        return bar
 
     def test(self):
+        self.set_microphone()
+
         self.start()
         print("Press Ctrl + C to stop.")
         while(self.stream.is_active()):
             try:
                 self.calculate_note()
-                print("\rMIDI:\t{}\t\tNote:\t{}  \t\tAmpl:\t{}    ".format(self.note, self.note_name, self.amplitude), end="")
+                amplitude_bar = self.amplitude_bar()
+                print("\rMIDI:\t{}\tNote:\t{}  \tAmpl: {}".format(self.note, self.note_name, amplitude_bar), end="")
             except KeyboardInterrupt:
                 break
         self.stop()
+
+
+
 ######################################################################
 # Functions relating to Panel Attack and config loading/creation
 
@@ -298,7 +317,7 @@ def create_config(configfile, ipu, panelattack_keys):
 
     # For each button, record 15 samples to find most
     # commonly occuring note.  Returns all keys as dict when done.
-    print("Play a note for two seconds to bind it to the key:")
+    print("Play a note for 1 second to bind it to the key:")
     for pa_key in panelattack_keys:
         recorded_notes = [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
         i = 0
@@ -327,6 +346,9 @@ def create_config(configfile, ipu, panelattack_keys):
     if option.lower() == "y" or option.lower() == "yes" or option == "":
         with open(configfile,"w") as f:
             json.dump(new_config, f)
+            print("Saved to \'config.json\'.")
+    else:
+        print("Discarding new settings.")
 
     ipu.stop()
     return new_config
@@ -417,7 +439,7 @@ def main_menu(ipu, config):
             print("\n")
             print("1. Run")
             print("2. Reconfigure Input")
-            print("3. Test microphone")
+            print("3. Test Microphone")
             print("0. Exit")
 
             choice = ""
@@ -426,29 +448,39 @@ def main_menu(ipu, config):
             except:
                 print("Error: Invalid input. Please enter a number.")
 
-
+            # Run
             if (choice == 1):
                 panel(ipu, config)
+
+            # Reconfigure Input
             elif (choice == 2):
                 configfile = "config.json"
+
+                # Get keybinds set in Panel Attack
                 panelattack_keys = get_panelattack_keys()
+
                 print("Your Microphone is set to {}".format(ipu.get_microphone_name()))
                 print_readable_panelattack_config(panelattack_keys, config)
                 
                 verify = input("Are you sure you want to overwrite your settings? (y/N) ")
                 if (verify.lower() == "yes" or verify.lower() == "y"):
+                    # if yes, interactively create a config file
                     create_config(configfile, ipu, panelattack_keys)
+
+                    # reload the config file afterwards
+                    config = load_config(panelattack_keys)
+                    
+            # Test Microphone
             elif (choice == 3):
                 ipu.test()
+
+            # Exit
             elif (choice == 0):
                 print("Exiting.")
                 exit()
 ######################################################################
 
 # Ok, ready to go now.
-
-def test(ipu):
-   ipu.test() 
 
 def main(ipu):
     panelattack_keys = get_panelattack_keys()
@@ -465,6 +497,4 @@ if __name__ == "__main__":
     print(banner)
     ipu = IPU()
 
-    # Uncomment test(ipu) to check microphone and see how the program calculates values
-    #test(ipu)
     main(ipu)
