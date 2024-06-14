@@ -255,6 +255,15 @@ class IPU:
 ######################################################################
 # Functions relating to Panel Attack and config loading/creation
 
+# Panel Attack uses special characters (wgui)
+# These will not natively translate to the keyboard module Python uses.
+#
+# For special keyboard characters
+# Convert Panel Attack definitions to keyboard module
+# expected button presses ("numlock" -> "num lock")
+def translate(key):
+    return key    
+
 # Grab keysV2.txt as JSON and import them
 # Pulls keybindings on first configuration
 # Returns dictionary containing keybindings
@@ -271,19 +280,19 @@ def get_panelattack_keys():
         with open(KEYS_PATH) as file:
             loaded_file = json.load(file)
 
-            btn_assignments["swap1"] = str(loaded_file[0]["swap1"])
-            btn_assignments["raise1"] = str(loaded_file[0]["raise1"])
-            btn_assignments["up"] = str(loaded_file[0]["up"])
-            btn_assignments["down"]  = str(loaded_file[0]["down"])
-            btn_assignments["left"] = str(loaded_file[0]["left"])
-            btn_assignments["right"] = str(loaded_file[0]["right"])
+            btn_assignments["swap1"] = translate(str(loaded_file[0]["swap1"]))
+            btn_assignments["raise1"] = translate(str(loaded_file[0]["raise1"]))
+            btn_assignments["up"] = translate(str(loaded_file[0]["up"]))
+            btn_assignments["down"]  = translate(str(loaded_file[0]["down"]))
+            btn_assignments["left"] = translate(str(loaded_file[0]["left"]))
+            btn_assignments["right"] = translate(str(loaded_file[0]["right"]))
 
             return btn_assignments
     except FileNotFoundError:
         print("Error: \'" + KEYS_PATH + "\' not found.\nPlease verify Panel Attack is installed and keyboard keys are set.\nExiting.\n")
         exit()
 
-# Used in load_config() to find most frequently occuring note
+# Used in create_config() to find most frequently occuring note
 def mode(ls):
     # dictionary to keep count of each value
     counts = {}
@@ -353,6 +362,18 @@ def create_config(configfile, ipu, panelattack_keys):
     ipu.stop()
     return new_config
 
+# Checks keys pulled from a config to see
+# if there are any invalid keys.
+# Expects dictionary containing keyboard keys as values 
+def validate_key_config(keys):
+    # These Panel Attack keys are not supported by the
+    # keyboard module and cannot be bound to an instrument
+    invalid_keys = ["kp0", "kp1", "kp2", "kp3", "kp4", "kp5", "kp6", "kp7", "kp8", "kp9", "kp/", "kp*", "Unplugged Controller", "kp+", "kpenter"] 
+
+    for key in list(keys.values()):
+        if key in invalid_keys:
+            return key              # returns the invalid key for error message
+
 # Attempt to load config.json. Returns as JSON.
 # If config.json is not present in running directory,
 # the program will call create_config() to make one.
@@ -362,11 +383,27 @@ def load_config(panelattack_keys):
 
     try:
         with open(configfile) as f:
-            config = json.load(f)
+            config = json.load(f)           # load the config file from config.json
+            
+            # config.json invalid key check
+            badkey = validate_key_config(config["keys"])
+            if badkey != "None":
+                print("An invalid key was detected in config.json: {}. Recreate it now? (Y/n) ".format(badkey), end='')
+                option = ''
+                try:
+                    option = input()
+                except:
+                    print("Error: incorrect input.")
+                    exit()
 
-        return config
+                if option.lower() == "y" or option.lower() == "yes" or option == "":
+                    return create_config(configfile, ipu, panelattack_keys)
 
-    except json.JSONDecodeError:
+                else:
+                    print("Exiting.")
+                    exit()
+
+    except (json.JSONDecodeError, IndexError):
         print("Error: Invalid config.json file. Please delete config.json and run the program again.\nExiting.")
         exit()
 
@@ -393,7 +430,7 @@ def print_readable_panelattack_config(panelattack_keys, config):
     notes = list(config["keys"].keys())
 
     for i in range(0, len(pa_keys)):
-        print("\'{}\' is bound to key \'{}\' (note {})".format(pa_keys[i], config["keys"][notes[i]], notes[i]))
+        print("\'{}\'    \tis bound to keyboard \'{}\'  \t(note {})".format(pa_keys[i], config["keys"][notes[i]], notes[i]))
 
 # Called in main() as the loop that translates notes to key inputs to Panel Attack
 def panel(ipu, config):
@@ -484,6 +521,15 @@ def main_menu(ipu, config):
 
 def main(ipu):
     panelattack_keys = get_panelattack_keys()
+
+    # Panel Attack invalid key check
+    badkey = validate_key_config(panelattack_keys)
+    if badkey != None:
+        print("Error: Your Panel Attack configuration 1 includes an invalid key: {}".format(badkey))
+        print("Please open Panel Attack and rebind your keys to alphabet keys and try again.")
+        print("Exiting.")
+        exit()
+
     config = load_config(panelattack_keys)
 
     # tell ipu which microphone to use after loading config
