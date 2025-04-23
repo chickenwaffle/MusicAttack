@@ -1,13 +1,14 @@
 #! /usr/bin/env python
 ######################################################################
 # MusicAttack.py - Use your musical instrument or voice to control panel attack
-# Requires numpy, pyaudio, and keyboard.
+# Dependencies: numpy pyaudio keyboard
 ######################################################################
 # Author:  kornflakes, Sankyr
 # Date:    August 2022
 # License: MIT License 2022
 #          https://mit-license.org/
 ######################################################################
+
 import numpy as np
 import pyaudio
 import keyboard
